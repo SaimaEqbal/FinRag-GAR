@@ -1,76 +1,46 @@
-from datasets import load_dataset
+import numpy as np
+from rank_bm25 import BM25Okapi
 
 
-FINANCERAG_REPO = "Linq-AI-Research/FinanceRAG"
+def simple_tokenize(text):
+    return text.lower().split()
 
 
-def load_financial_dataset(subset: str):
-    """
-    Load one FinanceRAG dataset subset.
+class BM25Retriever:
 
-    Available subsets in the original project include:
-        FinDER
-        FinQABench
-        FinQA
-        FinanceBench
-        TATQA
-        ConvFinQA
-        MultiHiertt
-    """
+    def __init__(self, corpus):
+        self.corpus = corpus
+        self.doc_ids = list(corpus.keys())
 
-    corpus = load_dataset(
-        FINANCERAG_REPO,
-        name=subset,
-        split="corpus",
-    )
+        documents = []
 
-    queries = load_dataset(
-        FINANCERAG_REPO,
-        name=subset,
-        split="queries",
-    )
+        for doc_id in self.doc_ids:
+            title = corpus[doc_id].get("title", "")
+            text = corpus[doc_id].get("text", "")
 
-    return corpus, queries
+            combined = f"{title} {text}"
+            documents.append(simple_tokenize(combined))
 
+        self.bm25 = BM25Okapi(documents)
 
-def convert_corpus_to_dict(corpus):
-    """
-    Convert Hugging Face corpus into:
+    def retrieve(self, query, top_k=10):
 
-    {
-        document_id: {
-            "title": "...",
-            "text": "..."
-        }
-    }
-    """
+        query_tokens = simple_tokenize(query)
 
-    result = {}
+        scores = self.bm25.get_scores(query_tokens)
 
-    for row in corpus:
-        doc_id = str(row["_id"])
+        top_indices = np.argsort(scores)[::-1][:top_k]
 
-        result[doc_id] = {
-            "title": row.get("title", ""),
-            "text": row.get("text", ""),
-        }
+        results = []
 
-    return result
+        for index in top_indices:
+            doc_id = self.doc_ids[index]
 
+            results.append({
+                "id": doc_id,
+                "title": self.corpus[doc_id].get("title", ""),
+                "text": self.corpus[doc_id].get("text", ""),
+                "score": float(scores[index]),
+            })
 
-def convert_queries_to_dict(queries):
-    """
-    Convert Hugging Face queries into:
-
-    {
-        query_id: query_text
-    }
-    """
-
-    result = {}
-
-    for row in queries:
-        query_id = str(row["_id"])
-        result[query_id] = row["text"]
-
-    return result
+        return results
