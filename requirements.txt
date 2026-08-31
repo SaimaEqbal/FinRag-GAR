@@ -1,0 +1,8 @@
+datasets
+pandas
+numpy
+rank-bm25
+nltk
+openai
+python-dotenv
+tqdm
