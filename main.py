@@ -50,6 +50,17 @@ def main():
         top_k=10,
     )
 
+    print("\n==============================")
+    print("RETRIEVED DOCUMENTS")
+    print("==============================")
+
+    for i, doc in enumerate(result["retrieved_documents"]):
+
+        print(f"\nRANK: {i}")
+        print(f"ID: {doc.get('id', doc.get('_id', ''))}")
+        print(f"TITLE: {doc.get('title', '')}")
+        print(f"TEXT: {doc.get('text', '')[:1000]}...")
+
     # -----------------------------------------
     # 4. Print results
     # -----------------------------------------

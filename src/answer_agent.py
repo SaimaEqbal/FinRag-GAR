@@ -1,13 +1,13 @@
 from dotenv import load_dotenv
-from openai import OpenAI
+from groq import Groq
 
 load_dotenv()
 
 
 class AnswerAgent:
 
-    def __init__(self, model="gpt-4o-mini"):
-        self.client = OpenAI()
+    def __init__(self, model="openai/gpt-oss-20b"):
+        self.client = Groq()
         self.model = model
 
     def answer(self, query, documents):
