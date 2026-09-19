@@ -6,12 +6,13 @@ from src.dataset_loader import (
 
 from src.retriever import BM25Retriever
 from src.selection_agent import SelectionAgent
+from src.answer_agent import AnswerAgent
 
 
 def main():
 
     # =========================================
-    # 1. Load FinQA dataset
+    # 1. Load dataset
     # =========================================
 
     print("Loading FinQA...")
@@ -25,7 +26,7 @@ def main():
     print(f"Queries: {len(queries)}")
 
     # =========================================
-    # 2. Create BM25 Retriever
+    # 2. BM25
     # =========================================
 
     print("\nCreating BM25 retriever...")
@@ -35,63 +36,40 @@ def main():
     print("BM25 ready.")
 
     # =========================================
-    # 3. Get one test query
+    # 3. Query
     # =========================================
 
     query_id = list(queries.keys())[0]
     query = queries[query_id]
 
     print("\n==============================")
-    print("QUERY ID")
-    print("==============================")
-    print(query_id)
-
-    print("\n==============================")
     print("QUERY")
     print("==============================")
+
     print(query)
 
     # =========================================
-    # 4. BM25 Retrieval
+    # 4. Retrieve
     # =========================================
-
-    print("\n==============================")
-    print("BM25 RETRIEVAL")
-    print("==============================")
 
     retrieved_documents = retriever.retrieve(
         query,
         top_k=10,
     )
 
-    print(f"Retrieved documents: {len(retrieved_documents)}")
-
-    # Show BM25 results
-    for i, doc in enumerate(retrieved_documents, start=1):
-
-        print(f"\n--- BM25 Document {i} ---")
-        print(f"ID: {doc['id']}")
-        print(f"Title: {doc['title']}")
-        print(f"Score: {doc['score']:.4f}")
-        print(f"Text: {doc['text'][:300]}...")
-
-    # =========================================
-    # 5. Selection Agent
-    # =========================================
-
-    print("\n==============================")
-    print("SELECTION AGENT")
-    print("==============================")
-
-    # We retrieved Top-10 using BM25,
-    # but send only Top-5 to the LLM.
-    # This keeps the Groq request small enough.
-    selection_candidates = retrieved_documents[:5]
-
     print(
-        f"Sending {len(selection_candidates)} "
-        f"documents to Selection Agent."
+        f"\nBM25 retrieved "
+        f"{len(retrieved_documents)} documents."
     )
+
+    # =========================================
+    # 5. Selection
+    # =========================================
+
+    print("\nRunning Selection Agent...")
+
+    # Only send Top-5 to Groq
+    selection_candidates = retrieved_documents[:5]
 
     selector = SelectionAgent()
 
@@ -101,56 +79,46 @@ def main():
     )
 
     print(
-        f"\nSelection Agent kept "
+        f"Selection Agent kept "
         f"{len(selected_documents)} documents."
     )
 
     # =========================================
-    # 6. Display selected documents
+    # 6. Answer
+    # =========================================
+
+    print("\nRunning Answer Agent...")
+
+    answer_agent = AnswerAgent()
+
+    answer = answer_agent.answer(
+        query,
+        selected_documents,
+    )
+
+    # =========================================
+    # 7. Final answer
     # =========================================
 
     print("\n==============================")
-    print("SELECTED DOCUMENTS")
+    print("FINAL ANSWER")
     print("==============================")
 
-    if not selected_documents:
-
-        print("No documents were selected.")
-
-    else:
-
-        for i, doc in enumerate(
-            selected_documents,
-            start=1,
-        ):
-
-            print(f"\n--- Selected Document {i} ---")
-
-            print(f"ID: {doc['id']}")
-            print(f"Title: {doc['title']}")
-            print(f"BM25 Score: {doc['score']:.4f}")
-
-            print("\nText:")
-            print(doc["text"][:1000])
+    print(answer)
 
     # =========================================
-    # 7. Summary
+    # 8. Summary
     # =========================================
 
     print("\n==============================")
-    print("PIPELINE SUMMARY")
+    print("SUMMARY")
     print("==============================")
 
-    print(f"Corpus size: {len(corpus)}")
     print(f"Query ID: {query_id}")
+    print(f"Corpus: {len(corpus)}")
     print(f"BM25 retrieved: {len(retrieved_documents)}")
     print(f"Selection candidates: {len(selection_candidates)}")
-    print(f"Selected documents: {len(selected_documents)}")
-
-    print("\nDataset ✓")
-    print("BM25 ✓")
-    print("Groq ✓")
-    print("Selection Agent ✓")
+    print(f"Selected: {len(selected_documents)}")
 
 
 if __name__ == "__main__":
