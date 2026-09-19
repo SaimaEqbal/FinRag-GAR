@@ -29,12 +29,26 @@ class GARRAGPipeline:
             top_k=top_k,
         )
 
-        print(f"\nRetrieved {len(retrieved_documents)} documents.")
+        print(
+            f"\nRetrieved "
+            f"{len(retrieved_documents)} documents."
+        )
 
-        # 2. Select
+        # 2. Create candidate pool for GAR selection
+        # BM25 retrieves top 10, but only top 5 are
+        # sent to the Selection Agent.
+        selection_candidates = retrieved_documents[:5]
+
+        print(
+            f"Sending "
+            f"{len(selection_candidates)} documents "
+            f"to Selection Agent."
+        )
+
+        # 3. Select relevant documents
         selected_documents = self.selection_agent.select(
             query,
-            retrieved_documents,
+            selection_candidates,
         )
 
         print(
@@ -42,7 +56,7 @@ class GARRAGPipeline:
             f"{len(selected_documents)} documents."
         )
 
-        # 3. Generate answer
+        # 4. Generate answer
         answer = self.answer_agent.answer(
             query,
             selected_documents,
