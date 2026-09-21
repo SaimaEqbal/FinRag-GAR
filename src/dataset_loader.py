@@ -4,9 +4,26 @@ from datasets import load_dataset
 FINANCERAG_REPO = "thomaskim1130/FinanceRAG-Lingua"
 
 
+DATASET_CONFIGS = {
+    "FinQA": "keyword-FinQA",
+    "ConvFinQA": "keyword-ConvFinQA",
+    "FinDER": "keyword-FinDER",
+    "FinQABench": "keyword-FinQABench",
+    "FinanceBench": "keyword-FinanceBench",
+    "TATQA": "keyword-TATQA",
+    "MultiHiertt": "keyword-MultiHiertt",
+}
+
+
 def load_financial_dataset(subset: str):
 
-    config = f"preprocessed-{subset}"
+    if subset not in DATASET_CONFIGS:
+        raise ValueError(
+            f"Unknown dataset: {subset}\n"
+            f"Available datasets: {list(DATASET_CONFIGS.keys())}"
+        )
+
+    config = DATASET_CONFIGS[subset]
 
     corpus = load_dataset(
         FINANCERAG_REPO,
@@ -23,14 +40,19 @@ def load_financial_dataset(subset: str):
     return corpus, queries
 
 
-def convert_corpus_to_dict(corpus):
+def convert_corpus_to_dict(corpus, dataset_name):
 
     result = {}
 
     for row in corpus:
-        doc_id = str(row["_id"])
+
+        original_id = str(row["_id"])
+
+        doc_id = f"{dataset_name}_{original_id}"
 
         result[doc_id] = {
+            "id": doc_id,
+            "dataset": dataset_name,
             "title": row.get("title", ""),
             "text": row.get("text", ""),
         }
@@ -38,13 +60,21 @@ def convert_corpus_to_dict(corpus):
     return result
 
 
-def convert_queries_to_dict(queries):
+def convert_queries_to_dict(queries, dataset_name):
 
     result = {}
 
     for row in queries:
-        query_id = str(row["_id"])
 
-        result[query_id] = row["text"]
+        original_id = str(row["_id"])
+
+        query_id = f"{dataset_name}_{original_id}"
+
+        result[query_id] = {
+            "id": query_id,
+            "dataset": dataset_name,
+            "title": row.get("title", ""),
+            "text": row.get("text", ""),
+        }
 
     return result

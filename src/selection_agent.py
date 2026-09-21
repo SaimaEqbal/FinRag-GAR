@@ -126,7 +126,7 @@ Retrieved documents:
                 except (ValueError, TypeError):
                     continue
 
-            selected_indices = valid_indices
+            selected_indices = valid_indices[:5]
 
         except Exception as error:
 
