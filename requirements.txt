@@ -6,3 +6,4 @@ nltk
 openai
 python-dotenv
 tqdm
+groq

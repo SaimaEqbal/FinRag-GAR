@@ -10,3 +10,6 @@ data/outputs/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/outputs/.gitkeep
+
+data/
+indexes/
