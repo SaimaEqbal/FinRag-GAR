@@ -11,7 +11,7 @@ def main():
     print("Loading FinQA corpus...")
 
     corpus, _ = load_financial_dataset("FinQA")
-    corpus = convert_corpus_to_dict(corpus)
+    corpus = convert_corpus_to_dict(corpus, "FinQA")
 
     print(f"Corpus documents: {len(corpus)}")
 
