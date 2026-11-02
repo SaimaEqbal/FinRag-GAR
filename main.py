@@ -95,34 +95,31 @@ def load_or_build_corpus():
 # Create pipeline
 # ============================================================
 
-def create_pipeline(all_corpus):
 
-    os.makedirs("indexes", exist_ok=True)
+def create_pipeline(all_corpus):
+    if not os.path.exists(BM25_PATH):
+        raise FileNotFoundError(
+            f"BM25 index not found: {BM25_PATH}. "
+            "Build the index before running the pipeline."
+        )
+
+    if not os.path.exists(EMBEDDING_PATH):
+        raise FileNotFoundError(
+            f"Embedding matrix not found: {EMBEDDING_PATH}. "
+            "Generate embeddings before running the pipeline."
+        )
 
     pipeline = GARRAGPipeline()
 
-    if (
-        os.path.exists(BM25_PATH)
-        and os.path.exists(EMBEDDING_PATH)
-    ):
+    pipeline.setup_from_index(
+        corpus=all_corpus,
+        bm25_path=BM25_PATH,
+        embedding_path=EMBEDDING_PATH,
+    )
 
-        pipeline.setup_from_index(
-            all_corpus,
-            BM25_PATH,
-            EMBEDDING_PATH,
-        )
-
-    else:
-
-        print("Building retrieval indexes...")
-
-        pipeline.setup(
-            all_corpus,
-            bm25_path=BM25_PATH,
-            embedding_path=EMBEDDING_PATH,
-        )
-
+    print("Existing retrieval indexes loaded successfully.")
     return pipeline
+
 
 
 # ============================================================
