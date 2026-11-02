@@ -1,65 +1,154 @@
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
-from groq import Groq
+from pathlib import Path
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+from groq import Groq
 
 
 class QueryRewriter:
-    def __init__(self, model="openai/gpt-oss-20b"):
+    def __init__(self):
         api_key = os.getenv("GROQ_API_KEY")
 
         if not api_key:
-            raise ValueError("GROQ_API_KEY was not found.")
+            raise ValueError("GROQ_API_KEY is not set.")
 
         self.client = Groq(api_key=api_key)
-        self.model = model
 
-    def rewrite_query(self, query, missing_information, previous_query=None):
-        """
-        Rewrite a query to improve retrieval when the available
-        evidence is insufficient.
-        """
+        self.model_1 = os.getenv(
+            "GROQ_MODEL_1",
+            "openai/gpt-oss-20b",
+        )
+        self.model_2 = os.getenv("GROQ_MODEL_2")
+
+        if not self.model_2:
+            raise ValueError("GROQ_MODEL_2 is not set.")
+
+        if self.model_1 == self.model_2:
+            raise ValueError(
+                "GROQ_MODEL_1 and GROQ_MODEL_2 must be different."
+            )
+
+    def _rewrite_with_model(
+        self,
+        model,
+        query,
+        missing_information,
+    ):
+        """Generate one rewritten financial query using a single model."""
 
         prompt = f"""
-You are a query-rewriting component in a RAG system.
+Rewrite the financial question to improve document retrieval.
 
 Original question:
 {query}
 
-Previous search query:
-{previous_query or query}
-
-Missing information identified by the evidence checker:
+Missing information or retrieval problem:
 {missing_information}
 
-Rewrite the search query to help retrieve documents containing
-the missing information.
-
-Rules:
-- Preserve the original question's meaning.
-- Include important entities, figures, dates, and technical terms.
-- Focus on the missing information.
+Instructions:
+- Preserve the original question's intent.
+- Preserve company names, financial metrics, and reporting periods.
+- Add relevant financial terminology where useful.
 - Do not answer the question.
-- Return only the rewritten search query, without explanation.
+- Return only the rewritten query.
+- Keep the query within 40 words.
 """
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
+        try:
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You rewrite financial questions for "
+                            "retrieval-augmented generation. "
+                            "Return only the rewritten query."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    },
+                ],
+                temperature=0.2,
+            )
+
+            rewritten_query = (
+                response.choices[0].message.content or ""
+            ).strip().strip('"').strip("'")
+
+            if (
+                not rewritten_query
+                or len(rewritten_query.split()) > 40
+            ):
+                return None
+
+            # Avoid returning the original query as a rewrite.
+            if rewritten_query.lower() == query.strip().lower():
+                return None
+
+            return rewritten_query
+
+        except Exception as error:
+            print(
+                f"[Query Rewriter] Model {model} failed: {error}"
+            )
+            return None
+
+    def rewrite_queries(self, query, missing_information):
+        """
+        Generate two rewrite candidates in one rewrite round.
+
+        Both models receive the same original query.
+        Candidate selection is handled by agentic_controller.py.
+        """
+
+        print("\n========== QUERY REWRITING ==========")
+        print(f"Original query:\n{query}\n")
+
+        # Run both model calls concurrently.
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_1 = executor.submit(
+                self._rewrite_with_model,
+                self.model_1,
+                query,
+                missing_information,
+            )
+
+            future_2 = executor.submit(
+                self._rewrite_with_model,
+                self.model_2,
+                query,
+                missing_information,
+            )
+
+            candidate_1 = future_1.result()
+            candidate_2 = future_2.result()
+
+        print(f"LLM 1 ({self.model_1}):")
+        print(candidate_1 or "No valid rewrite generated.")
+
+        print(f"\nLLM 2 ({self.model_2}):")
+        print(candidate_2 or "No valid rewrite generated.")
+
+        print("=====================================\n")
+
+        # Do not select a candidate here.
+        # The controller makes that decision.
+        return {
+            "original_query": query,
+            "candidates": [
                 {
-                    "role": "system",
-                    "content": "Rewrite search queries clearly and precisely.",
+                    "model": self.model_1,
+                    "query": candidate_1,
                 },
-                {"role": "user", "content": prompt},
+                {
+                    "model": self.model_2,
+                    "query": candidate_2,
+                },
             ],
-            temperature=0,
-        )
-
-        rewritten_query = response.choices[0].message.content.strip()
-
-        if not rewritten_query:
-            return query
-
-        return rewritten_query
+        }
