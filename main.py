@@ -5,11 +5,12 @@ from src.dataset_loader import (
     load_financial_dataset,
     convert_corpus_to_dict,
 )
+from src.new_corpus_loader import load_annual_financial_corpus
 from src.pipeline import GARRAGPipeline
 
 
 # ============================================================
-# Paths
+# Original corpus paths
 # ============================================================
 
 CORPUS_PATH = "data/unified_corpus.json"
@@ -18,7 +19,27 @@ EMBEDDING_PATH = "indexes/bge_embeddings.npy"
 
 
 # ============================================================
-# Datasets
+# Annual FY2025-26 corpus paths
+# ============================================================
+
+ANNUAL_CORPUS_CSV = (
+    "financial_data/FY2026_27_corpus/"
+    "processed_data/combined_annual_corpus_clean.csv"
+)
+
+ANNUAL_BM25_PATH = (
+    "financial_data/FY2026_27_corpus/"
+    "embeddings/combined_bm25.pkl"
+)
+
+ANNUAL_EMBEDDING_PATH = (
+    "financial_data/FY2026_27_corpus/"
+    "embeddings/combined_embeddings.npy"
+)
+
+
+# ============================================================
+# Original datasets
 # ============================================================
 
 DATASETS = [
@@ -33,7 +54,7 @@ DATASETS = [
 
 
 # ============================================================
-# Build unified corpus
+# Build original unified corpus
 # ============================================================
 
 def build_unified_corpus():
@@ -53,7 +74,7 @@ def build_unified_corpus():
 
 
 # ============================================================
-# Load existing corpus or build it
+# Load existing original corpus or build it
 # ============================================================
 
 def load_or_build_corpus():
@@ -69,9 +90,14 @@ def load_or_build_corpus():
         ) as f:
             all_corpus = json.load(f)
 
+        print(
+            f"Loaded original corpus: "
+            f"{len(all_corpus)} documents."
+        )
+
         return all_corpus
 
-    print("Building unified corpus...")
+    print("Building original unified corpus...")
 
     all_corpus = build_unified_corpus()
 
@@ -86,9 +112,28 @@ def load_or_build_corpus():
             ensure_ascii=False
         )
 
-    print(f"Saved {len(all_corpus)} documents.")
+    print(
+        f"Saved {len(all_corpus)} documents "
+        f"to {CORPUS_PATH}."
+    )
 
     return all_corpus
+
+
+# ============================================================
+# Load new FY2026-27 corpus
+# ============================================================
+
+def load_annual_corpus():
+
+    if not os.path.exists(ANNUAL_CORPUS_CSV):
+        raise FileNotFoundError(
+            f"Annual corpus CSV not found: {ANNUAL_CORPUS_CSV}"
+        )
+
+    return load_annual_financial_corpus(
+        ANNUAL_CORPUS_CSV
+    )
 
 
 # ============================================================
@@ -96,30 +141,49 @@ def load_or_build_corpus():
 # ============================================================
 
 
-def create_pipeline(all_corpus):
+def create_pipeline(all_corpus, annual_corpus):
+
+    # Validate original index files
     if not os.path.exists(BM25_PATH):
         raise FileNotFoundError(
-            f"BM25 index not found: {BM25_PATH}. "
-            "Build the index before running the pipeline."
+            f"Original BM25 index not found: {BM25_PATH}"
         )
 
     if not os.path.exists(EMBEDDING_PATH):
         raise FileNotFoundError(
-            f"Embedding matrix not found: {EMBEDDING_PATH}. "
-            "Generate embeddings before running the pipeline."
+            f"Original embedding matrix not found: {EMBEDDING_PATH}"
+        )
+
+    # Validate annual index files
+    if not os.path.exists(ANNUAL_BM25_PATH):
+        raise FileNotFoundError(
+            f"Annual BM25 index not found: {ANNUAL_BM25_PATH}"
+        )
+
+    if not os.path.exists(ANNUAL_EMBEDDING_PATH):
+        raise FileNotFoundError(
+            f"Annual embedding matrix not found: {ANNUAL_EMBEDDING_PATH}"
         )
 
     pipeline = GARRAGPipeline()
 
     pipeline.setup_from_index(
+        # Original corpus
         corpus=all_corpus,
         bm25_path=BM25_PATH,
         embedding_path=EMBEDDING_PATH,
+
+        # Annual corpus
+        annual_corpus=annual_corpus,
+        annual_bm25_path=ANNUAL_BM25_PATH,
+        annual_embedding_path=ANNUAL_EMBEDDING_PATH,
     )
 
-    print("Existing retrieval indexes loaded successfully.")
-    return pipeline
+    print("\nBoth retrieval systems loaded successfully.")
+    print(f"Original corpus: {len(all_corpus)} documents")
+    print(f"Annual corpus: {len(annual_corpus)} documents")
 
+    return pipeline
 
 
 # ============================================================
@@ -158,6 +222,31 @@ def run_user_query(pipeline):
         f"Selected: "
         f"{len(result['selected_documents'])} documents"
     )
+
+    # --------------------------------------------------------
+    # Retrieval source
+    # --------------------------------------------------------
+
+    print("\n" + "-" * 60)
+    print("RETRIEVAL SOURCE")
+    print("-" * 60)
+
+    for item in result["history"]:
+        if item.get("stage") == "evidence_check":
+
+            print(
+                f"Query: {item.get('query')}"
+            )
+
+            print(
+                f"Source: {item.get('retrieval_source')}"
+            )
+
+            if item.get("new_corpus_attempt"):
+                print(
+                    "New corpus assessment:",
+                    item["new_corpus_attempt"]
+                )
 
     # --------------------------------------------------------
     # Selected documents
@@ -201,15 +290,20 @@ def run_user_query(pipeline):
 
 def main():
 
+    # Load original corpus.
     all_corpus = load_or_build_corpus()
 
+    # Load new FY2026-27 corpus.
+    annual_corpus = load_annual_corpus()
+
+    # Initialize both retrieval systems.
     pipeline = create_pipeline(
-        all_corpus
+        all_corpus=all_corpus,
+        annual_corpus=annual_corpus,
     )
 
-    run_user_query(
-        pipeline
-    )
+    # Run the existing agentic RAG pipeline.
+    run_user_query(pipeline)
 
 
 if __name__ == "__main__":
