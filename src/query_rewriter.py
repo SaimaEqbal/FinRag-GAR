@@ -40,22 +40,24 @@ class QueryRewriter:
         """Generate one rewritten financial query using a single model."""
 
         prompt = f"""
-Rewrite the financial question to improve document retrieval.
+            Improve the following financial question for document retrieval.
 
-Original question:
-{query}
+            Original question:
+            {query}
 
-Missing information or retrieval problem:
-{missing_information}
+            Retrieval feedback:
+            {missing_information}
 
-Instructions:
-- Preserve the original question's intent.
-- Preserve company names, financial metrics, and reporting periods.
-- Add relevant financial terminology where useful.
-- Do not answer the question.
-- Return only the rewritten query.
-- Keep the query within 40 words.
-"""
+            Instructions:
+            - Preserve the original meaning and intent.
+            - Preserve all company names, financial metrics, dates,
+            reporting periods and numerical references.
+            - Use relevant alternative financial terminology where useful.
+            - Do not introduce new entities, dates or assumptions.
+            - Do not narrow the question to only the missing information.
+            - Keep the rewritten question clear and natural.
+            - Return only the rewritten question.
+        """
 
         try:
             response = self.client.chat.completions.create(
@@ -83,7 +85,6 @@ Instructions:
 
             if (
                 not rewritten_query
-                or len(rewritten_query.split()) > 40
             ):
                 return None
 

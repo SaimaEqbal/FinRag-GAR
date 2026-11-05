@@ -86,8 +86,10 @@ class AgenticRetrievalController:
                 )
 
         return self._decision(
-            "ABSTAIN",
-            "Neither model produced a valid rewritten query.",
+            "RETRIEVE_MORE",
+            "No valid rewrite was generated. Continue with the original query.",
+            selected_query=original_query,
+            selected_model="original",
         )
 
     def decide(
@@ -188,22 +190,25 @@ class AgenticRetrievalController:
 
         # Require both assessments when dual-model results are provided.
         if assessment_1 is not None or assessment_2 is not None:
-            if not (
-                isinstance(assessment_1, dict)
-                and isinstance(assessment_2, dict)
-                and assessment_1.get("status") == "ok"
-                and assessment_2.get("status") == "ok"
-                and isinstance(assessment_1.get("sufficient"), bool)
-                and isinstance(assessment_2.get("sufficient"), bool)
-            ):
+            assessments = [assessment_1, assessment_2]
+
+            valid_assessments = [
+                item for item in assessments
+                if (
+                    isinstance(item, dict)
+                    and item.get("status") == "ok"
+                    and isinstance(item.get("sufficient"), bool)
+                )
+            ]
+
+            if not valid_assessments:
                 return self._decision(
                     "ABSTAIN",
-                    "One or both evidence assessments are invalid.",
+                    "Both evidence assessments failed."
                 )
 
-            both_sufficient = (
-                assessment_1["sufficient"]
-                and assessment_2["sufficient"]
+            both_sufficient = any(
+                item["sufficient"] for item in valid_assessments
             )
         else:
             # Backward compatibility with a single top-level assessment.
@@ -225,8 +230,6 @@ class AgenticRetrievalController:
 
         if (
             both_sufficient
-            and evidence_result.get("sufficient") is True
-            and not blocking_conflict
         ):
             return self._decision(
                 "GENERATE_ANSWER",
@@ -243,11 +246,13 @@ class AgenticRetrievalController:
         # 5. After rewriting, permit bounded retrieval retries, then abstain.
         if retry_count < self.max_retries:
             return self._decision(
-                "RETRIEVE_MORE",
-                "Evidence remains insufficient; try broader retrieval.",
-            )
+            "GENERATE_ANSWER",
+            "Retrieval attempts exhausted. Generate the best "
+            "evidence-supported answer, including partial information.",
+        )
 
         return self._decision(
-            "ABSTAIN",
-            "Evidence remains insufficient after the allowed retrieval attempts.",
+            "GENERATE_ANSWER",
+            "Retrieval attempts are exhausted. Generate the best "
+            "partial answer supported by the available evidence.",
         )

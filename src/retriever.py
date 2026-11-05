@@ -8,17 +8,17 @@ from sentence_transformers import SentenceTransformer
 
 class BM25Retriever:
     def __init__(
-        self,
-        corpus,
-        bm25_path="indexes/bm25.pkl",
-        embeddings_path="indexes/bge_embeddings.npy",
-        model_name="BAAI/bge-small-en-v1.5",
-        rrf_k=60,
-    ):
+    self,
+    corpus,
+    bm25_path="indexes/bm25.pkl",
+    embeddings_path="indexes/bge_embeddings.npy",
+    model_name="BAAI/bge-small-en-v1.5",
+    rrf_k=60,
+    embedding_model=None,
+):
         self.corpus = corpus
         self.rrf_k = rrf_k
 
-        # Preserve corpus ordering for index/embedding alignment.
         if isinstance(corpus, dict):
             self.doc_ids = list(corpus.keys())
             self.documents = list(corpus.values())
@@ -37,20 +37,26 @@ class BM25Retriever:
                 f"Embedding file not found: {embeddings_path}"
             )
 
-        print("Loading BGE embedding model...")
-        self.model = SentenceTransformer(model_name)
-        self.embedding_model = self.model
+        # Reuse the shared BGE model. Load only if one wasn't supplied.
+        if embedding_model is None:
+            print("Loading BGE embedding model...")
+            embedding_model = SentenceTransformer(model_name)
 
-        print("Loading BM25 index...")
+        self.model = embedding_model
+        self.embedding_model = embedding_model
+
+        print(f"Loading BM25 index: {bm25_path}")
         with open(bm25_path, "rb") as file:
             loaded_index = pickle.load(file)
 
-        # Support a directly serialized BM25 object or a dictionary
-        # that wraps one. Do not guess how to reconstruct unknown formats.
         self.bm25 = self._unwrap_bm25_index(loaded_index)
 
-        print("Loading BGE embeddings...")
-        self.embeddings = np.load(embeddings_path)
+        # Memory-map embeddings instead of loading another full copy into RAM.
+        print(f"Loading embeddings: {embeddings_path}")
+        self.embeddings = np.load(
+            embeddings_path,
+            mmap_mode="r",
+        )
 
         if self.embeddings.ndim != 2:
             raise ValueError(
@@ -335,7 +341,8 @@ class BM25Retriever:
         matches.sort(key=lambda item: item[1], reverse=True)
         return [index for index, _ in matches[:limit]]
 
-    def retrieve(self, query, top_k=10):
+    def retrieve(self, query, top_k=10, query_embeddings=None):
+
         if not isinstance(query, str) or not query.strip():
             return []
 
@@ -343,12 +350,14 @@ class BM25Retriever:
             return []
 
         variants = self._query_variants(query)
+
         bm25_best = {}
         bge_best = {}
 
         candidate_k = min(500, len(self.documents))
 
         for variant in variants:
+
             tokens = self._tokenize(variant)
 
             if tokens:
@@ -358,8 +367,10 @@ class BM25Retriever:
                 )
 
                 count = min(candidate_k, len(scores))
+
                 if count:
                     indices = np.argpartition(scores, -count)[-count:]
+
                     indices = sorted(
                         (int(i) for i in indices),
                         key=lambda i: scores[i],
@@ -369,17 +380,25 @@ class BM25Retriever:
                     for index in indices:
                         score = float(scores[index])
                         bm25_best[index] = max(
-                            score, bm25_best.get(index, -np.inf)
+                            score,
+                            bm25_best.get(index, -np.inf),
                         )
 
-            query_embedding = self._encode_query(variant)
+            # Reuse the embedding created by the pipeline.
+            if query_embeddings is not None:
+                query_embedding = query_embeddings[variant]
+            else:
+                query_embedding = self._encode_query(variant)
+
             similarities = self.embeddings @ query_embedding
 
             count = min(candidate_k, len(similarities))
+
             if count:
                 indices = np.argpartition(
                     similarities, -count
                 )[-count:]
+
                 indices = sorted(
                     (int(i) for i in indices),
                     key=lambda i: similarities[i],
@@ -389,15 +408,16 @@ class BM25Retriever:
                 for index in indices:
                     score = float(similarities[index])
                     bge_best[index] = max(
-                        score, bge_best.get(index, -np.inf)
+                        score,
+                        bge_best.get(index, -np.inf),
                     )
 
-        # Rebuild rankings from the best scores for each retriever.
         bm25_order = sorted(
             bm25_best,
             key=lambda i: bm25_best[i],
             reverse=True,
         )
+
         bge_order = sorted(
             bge_best,
             key=lambda i: bge_best[i],
@@ -418,7 +438,6 @@ class BM25Retriever:
                 + 1.0 / (self.rrf_k + rank)
             )
 
-        # Merge fallback candidates before applying top_k.
         candidate_indices = set(rrf_scores)
         candidate_indices.update(
             self._find_fallback_candidates(query)
@@ -428,8 +447,10 @@ class BM25Retriever:
 
         def final_score(index):
             relevance = self._financial_relevance_score(
-                self.documents[index], query
+                self.documents[index],
+                query,
             )
+
             return (
                 rrf_scores.get(index, 0.0)
                 + relevance_weight * relevance
@@ -458,7 +479,8 @@ class BM25Retriever:
             )
             doc["financial_relevance_score"] = float(
                 self._financial_relevance_score(
-                    self.documents[index], query
+                    self.documents[index],
+                    query,
                 )
             )
             doc["hybrid_score"] = float(final_score(index))

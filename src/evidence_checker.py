@@ -123,8 +123,11 @@ Rules:
 - Do not assume documents from different datasets describe the same
   company or financial scenario.
 - A figure showing that something changed does not establish why.
-- Mark sufficient only if the documents support a reliable answer
-  to the question as asked.
+- Mark sufficient if the documents contain enough reliable evidence
+  to answer the question fully OR provide a meaningful partial answer.
+- Do not mark evidence insufficient merely because some details
+  are missing, provided other parts of the question can be answered.
+- A conflict does not automatically make all evidence insufficient.
 - If an unresolved or confirmed conflict materially affects the answer,
   mark sufficient false unless the question can still be answered
   reliably without choosing between conflicting claims.
@@ -209,11 +212,14 @@ If no potential conflicts exist, return an empty list.
             for conflict in conflicts
         )
 
-        sufficient = (
-            both_ok
-            and assessment_1["sufficient"]
-            and assessment_2["sufficient"]
-            and not blocking_conflict
+        valid_assessments = [
+            item for item in (assessment_1, assessment_2)
+            if item["status"] == "ok"
+        ]
+
+        sufficient = any(
+            item["sufficient"]
+            for item in valid_assessments
         )
 
         reasons = [
@@ -228,10 +234,7 @@ If no potential conflicts exist, return an empty list.
             if item["missing_information"]
         ))
 
-        if not both_ok:
-            status = "error"
-        else:
-            status = "ok"
+        status = "ok" if valid_assessments else "error"
 
         return {
             "status": status,
